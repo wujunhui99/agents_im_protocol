@@ -23,6 +23,7 @@ const (
 	Media_CompleteUpload_FullMethodName       = "/media.v1.Media/CompleteUpload"
 	Media_GetMedia_FullMethodName             = "/media.v1.Media/GetMedia"
 	Media_GetDownloadURL_FullMethodName       = "/media.v1.Media/GetDownloadURL"
+	Media_GetDownloadURLs_FullMethodName      = "/media.v1.Media/GetDownloadURLs"
 	Media_GetAvatarDisplayURL_FullMethodName  = "/media.v1.Media/GetAvatarDisplayURL"
 	Media_ValidateAvatarMedia_FullMethodName  = "/media.v1.Media/ValidateAvatarMedia"
 	Media_ValidateMessageMedia_FullMethodName = "/media.v1.Media/ValidateMessageMedia"
@@ -46,6 +47,9 @@ type MediaClient interface {
 	// GetDownloadURL 纯签发整文件 presigned GET：跨域下载授权（链路校验 + friends/groups）已上移
 	// media-api(BFF)，本 RPC 只校验 media 存在且 ready 后签 URL，不做 requester 鉴权（EPIC #527 §4）。
 	GetDownloadURL(ctx context.Context, in *GetDownloadURLRequest, opts ...grpc.CallOption) (*GetDownloadURLResponse, error)
+	// GetDownloadURLs 批量签发 presigned GET：属主域（msg-rpc 拉取历史）一次拿齐附件 URL，
+	// 避免 N 次 RPC。未知/未 ready 的 media 直接跳过（结果里没有对应项）。
+	GetDownloadURLs(ctx context.Context, in *GetDownloadURLsRequest, opts ...grpc.CallOption) (*GetDownloadURLsResponse, error)
 	GetAvatarDisplayURL(ctx context.Context, in *GetAvatarDisplayURLRequest, opts ...grpc.CallOption) (*GetDownloadURLResponse, error)
 	// ValidateAvatarMedia asserts media_id is a ready avatar object owned by owner_user_id
 	// with an allowed content_type and size. Returns InvalidArgument/Forbidden/NotFound on
@@ -105,6 +109,16 @@ func (c *mediaClient) GetDownloadURL(ctx context.Context, in *GetDownloadURLRequ
 	return out, nil
 }
 
+func (c *mediaClient) GetDownloadURLs(ctx context.Context, in *GetDownloadURLsRequest, opts ...grpc.CallOption) (*GetDownloadURLsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetDownloadURLsResponse)
+	err := c.cc.Invoke(ctx, Media_GetDownloadURLs_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *mediaClient) GetAvatarDisplayURL(ctx context.Context, in *GetAvatarDisplayURLRequest, opts ...grpc.CallOption) (*GetDownloadURLResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetDownloadURLResponse)
@@ -153,6 +167,9 @@ type MediaServer interface {
 	// GetDownloadURL 纯签发整文件 presigned GET：跨域下载授权（链路校验 + friends/groups）已上移
 	// media-api(BFF)，本 RPC 只校验 media 存在且 ready 后签 URL，不做 requester 鉴权（EPIC #527 §4）。
 	GetDownloadURL(context.Context, *GetDownloadURLRequest) (*GetDownloadURLResponse, error)
+	// GetDownloadURLs 批量签发 presigned GET：属主域（msg-rpc 拉取历史）一次拿齐附件 URL，
+	// 避免 N 次 RPC。未知/未 ready 的 media 直接跳过（结果里没有对应项）。
+	GetDownloadURLs(context.Context, *GetDownloadURLsRequest) (*GetDownloadURLsResponse, error)
 	GetAvatarDisplayURL(context.Context, *GetAvatarDisplayURLRequest) (*GetDownloadURLResponse, error)
 	// ValidateAvatarMedia asserts media_id is a ready avatar object owned by owner_user_id
 	// with an allowed content_type and size. Returns InvalidArgument/Forbidden/NotFound on
@@ -183,6 +200,9 @@ func (UnimplementedMediaServer) GetMedia(context.Context, *GetMediaRequest) (*Me
 }
 func (UnimplementedMediaServer) GetDownloadURL(context.Context, *GetDownloadURLRequest) (*GetDownloadURLResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetDownloadURL not implemented")
+}
+func (UnimplementedMediaServer) GetDownloadURLs(context.Context, *GetDownloadURLsRequest) (*GetDownloadURLsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetDownloadURLs not implemented")
 }
 func (UnimplementedMediaServer) GetAvatarDisplayURL(context.Context, *GetAvatarDisplayURLRequest) (*GetDownloadURLResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetAvatarDisplayURL not implemented")
@@ -286,6 +306,24 @@ func _Media_GetDownloadURL_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Media_GetDownloadURLs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetDownloadURLsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MediaServer).GetDownloadURLs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Media_GetDownloadURLs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MediaServer).GetDownloadURLs(ctx, req.(*GetDownloadURLsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Media_GetAvatarDisplayURL_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetAvatarDisplayURLRequest)
 	if err := dec(in); err != nil {
@@ -362,6 +400,10 @@ var Media_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetDownloadURL",
 			Handler:    _Media_GetDownloadURL_Handler,
+		},
+		{
+			MethodName: "GetDownloadURLs",
+			Handler:    _Media_GetDownloadURLs_Handler,
 		},
 		{
 			MethodName: "GetAvatarDisplayURL",

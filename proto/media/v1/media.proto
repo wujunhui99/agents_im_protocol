@@ -18,6 +18,9 @@ service Media {
   // GetDownloadURL 纯签发整文件 presigned GET：跨域下载授权（链路校验 + friends/groups）已上移
   // media-api(BFF)，本 RPC 只校验 media 存在且 ready 后签 URL，不做 requester 鉴权（EPIC #527 §4）。
   rpc GetDownloadURL(GetDownloadURLRequest) returns (GetDownloadURLResponse);
+  // GetDownloadURLs 批量签发 presigned GET：属主域（msg-rpc 拉取历史）一次拿齐附件 URL，
+  // 避免 N 次 RPC。未知/未 ready 的 media 直接跳过（结果里没有对应项）。
+  rpc GetDownloadURLs(GetDownloadURLsRequest) returns (GetDownloadURLsResponse);
   rpc GetAvatarDisplayURL(GetAvatarDisplayURLRequest) returns (GetDownloadURLResponse);
   // ValidateAvatarMedia asserts media_id is a ready avatar object owned by owner_user_id
   // with an allowed content_type and size. Returns InvalidArgument/Forbidden/NotFound on
@@ -88,6 +91,14 @@ message GetDownloadURLRequest {
   reserved 1, 2, 4;
   reserved "owner_user_id", "requester_user_id", "msg_id";
   string media_id = 3;
+}
+
+message GetDownloadURLsRequest {
+  repeated string media_ids = 1;
+}
+
+message GetDownloadURLsResponse {
+  repeated GetDownloadURLResponse urls = 1;
 }
 
 message GetDownloadURLResponse {

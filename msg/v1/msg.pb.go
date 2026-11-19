@@ -40,8 +40,15 @@ type Message struct {
 	AllowRecursiveTrigger bool                   `protobuf:"varint,15,opt,name=allow_recursive_trigger,json=allowRecursiveTrigger,proto3" json:"allow_recursive_trigger,omitempty"`
 	SendTime              int64                  `protobuf:"varint,16,opt,name=send_time,json=sendTime,proto3" json:"send_time,omitempty"`
 	CreatedAt             int64                  `protobuf:"varint,17,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	// media_url 是 content 引用的附件（image/file）的短 TTL presigned GET URL。
+	// 由属主域在读取时签发（msg-rpc 调 media 域的批量签发），客户端可直接访问对象存储，
+	// 不再为每次下载单独做一次鉴权往返。为空表示无附件或签发失败，客户端回退到
+	// GET /media/{media_id}/download-url。
+	MediaUrl string `protobuf:"bytes,18,opt,name=media_url,json=mediaUrl,proto3" json:"media_url,omitempty"`
+	// media_url_expires_at 是 media_url 的过期时间（unix 毫秒）。
+	MediaUrlExpiresAt int64 `protobuf:"varint,19,opt,name=media_url_expires_at,json=mediaUrlExpiresAt,proto3" json:"media_url_expires_at,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *Message) Reset() {
@@ -189,6 +196,20 @@ func (x *Message) GetSendTime() int64 {
 func (x *Message) GetCreatedAt() int64 {
 	if x != nil {
 		return x.CreatedAt
+	}
+	return 0
+}
+
+func (x *Message) GetMediaUrl() string {
+	if x != nil {
+		return x.MediaUrl
+	}
+	return ""
+}
+
+func (x *Message) GetMediaUrlExpiresAt() int64 {
+	if x != nil {
+		return x.MediaUrlExpiresAt
 	}
 	return 0
 }
@@ -2221,7 +2242,7 @@ var File_proto_msg_v1_msg_proto protoreflect.FileDescriptor
 
 const file_proto_msg_v1_msg_proto_rawDesc = "" +
 	"\n" +
-	"\x16proto/msg/v1/msg.proto\x12\x06msg.v1\"\xd9\x04\n" +
+	"\x16proto/msg/v1/msg.proto\x12\x06msg.v1\"\xa7\x05\n" +
 	"\aMessage\x12\"\n" +
 	"\rserver_msg_id\x18\x01 \x01(\tR\vserverMsgId\x12\"\n" +
 	"\rclient_msg_id\x18\x02 \x01(\tR\vclientMsgId\x12'\n" +
@@ -2243,7 +2264,9 @@ const file_proto_msg_v1_msg_proto_rawDesc = "" +
 	"\x17allow_recursive_trigger\x18\x0f \x01(\bR\x15allowRecursiveTrigger\x12\x1b\n" +
 	"\tsend_time\x18\x10 \x01(\x03R\bsendTime\x12\x1d\n" +
 	"\n" +
-	"created_at\x18\x11 \x01(\x03R\tcreatedAt\"\xf3\x01\n" +
+	"created_at\x18\x11 \x01(\x03R\tcreatedAt\x12\x1b\n" +
+	"\tmedia_url\x18\x12 \x01(\tR\bmediaUrl\x12/\n" +
+	"\x14media_url_expires_at\x18\x13 \x01(\x03R\x11mediaUrlExpiresAt\"\xf3\x01\n" +
 	"\x14ConversationSeqState\x12'\n" +
 	"\x0fconversation_id\x18\x01 \x01(\tR\x0econversationId\x12\x17\n" +
 	"\amax_seq\x18\x02 \x01(\x03R\x06maxSeq\x12 \n" +

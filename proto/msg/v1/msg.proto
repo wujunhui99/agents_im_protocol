@@ -67,6 +67,13 @@ message Message {
   bool allow_recursive_trigger = 15;
   int64 send_time = 16;
   int64 created_at = 17;
+  // media_url 是 content 引用的附件（image/file）的短 TTL presigned GET URL。
+  // 由属主域在读取时签发（msg-rpc 调 media 域的批量签发），客户端可直接访问对象存储，
+  // 不再为每次下载单独做一次鉴权往返。为空表示无附件或签发失败，客户端回退到
+  // GET /media/{media_id}/download-url。
+  string media_url = 18;
+  // media_url_expires_at 是 media_url 的过期时间（unix 毫秒）。
+  int64 media_url_expires_at = 19;
 }
 
 message ConversationSeqState {
