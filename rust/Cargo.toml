@@ -1,0 +1,14 @@
+[package]
+name = "agents-im-protocol"
+version = "0.1.0"
+edition = "2021"
+description = "agents_im gRPC 契约（Rust 绑定，由 proto/ 生成）"
+license = "MIT"
+
+[dependencies]
+prost = "0.13"
+prost-types = "0.13"
+tonic = "0.12"
+
+[build-dependencies]
+tonic-build = "0.12"

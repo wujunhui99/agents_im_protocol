@@ -65,3 +65,42 @@ replace github.com/wujunhui99/agents_im_protocol => ../agents_im_protocol
 make gen      # 重新生成并 go mod tidy
 make verify   # CI 用：重新生成后要求 git 无 diff
 ```
+
+## 多语言（Rust 及其他）
+
+契约是语言中立的：`proto/` 是唯一事实来源，`option go_package` 只对 Go 生效，其他语言
+生成器会忽略它。当前仓库已提供两套绑定：
+
+| 语言 | 位置 | 生成方式 | 消费方式 |
+|---|---|---|---|
+| Go | `<domain>/v1/*.pb.go`（提交进仓库） | `make gen`（protoc） | `go get github.com/wujunhui99/agents_im_protocol@vX.Y.Z` |
+| Rust | `rust/`（crate `agents-im-protocol`） | `build.rs` 里 `tonic-build` 编译期生成 | git 依赖 + tag，或后续发布到 crates.io |
+
+Rust 侧验证：
+
+```bash
+cd rust && cargo check
+```
+
+新增一门语言（TypeScript / Java / Python …）不影响现有绑定：加一个 `gen/<lang>/` 目录
+或独立 crate/package，在 CI 里加一条生成 + 编译检查即可。契约本身不需要改动。
+
+### 版本与兼容
+
+- 版本用 git tag（`v0.2.0`）表达，Go module 和 Cargo git 依赖都能直接用同一个 tag。
+- proto 包名带版本（`user.v1`）：不兼容改动进 `user/v2`，老客户端继续用 v1。
+- 兼容改动（加字段/加 rpc）升 minor；不兼容升新的包版本，仓库整体 tag 只做递增。
+
+### Rust 侧注意事项
+
+- 字段命名：Rust 生成 snake_case，proto 用 lower_snake_case 即可，不要依赖 JSON 名。
+- 已知类型：`google.protobuf.Struct` 映射为 `prost_types::Struct`（`agent.proto` 用到）。
+- 服务需要双向流时直接加 `stream`，tonic/prost 都支持；当前契约均为 unary。
+- `build.rs` 依赖本机 `protoc`。如果希望消费方零工具链，可改为把生成的 `.rs` 提交进
+  `rust/src/gen/`，与 Go 侧保持一致。
+
+### 可选：Buf
+
+如果后续要更强的 lint / breaking-change 检测，可引入 [Buf](https://buf.build)：
+`buf breaking --against '.git#tag=vX.Y.Z'` 能在 CI 里拦住不兼容改动。当前先用
+`make verify`（生成代码漂移检查）+ code review 兜底。
