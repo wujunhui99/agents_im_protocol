@@ -104,3 +104,13 @@ cd rust && cargo check
 如果后续要更强的 lint / breaking-change 检测，可引入 [Buf](https://buf.build)：
 `buf breaking --against '.git#tag=vX.Y.Z'` 能在 CI 里拦住不兼容改动。当前先用
 `make verify`（生成代码漂移检查）+ code review 兜底。
+
+## 工具链版本（生成代码必须与之一致）
+
+| 工具 | 版本 |
+|---|---|
+| protoc | 36.2 |
+| protoc-gen-go | v1.36.11 |
+| protoc-gen-go-grpc | v1.6.1 |
+
+版本不一致会导致生成文件头部的版本注释变化，CI 的 `make verify` 会报漂移。
