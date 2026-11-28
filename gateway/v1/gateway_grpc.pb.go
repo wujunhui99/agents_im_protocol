@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	GatewayService_BatchPushOneMsg_FullMethodName = "/gateway.v1.GatewayService/BatchPushOneMsg"
+	GatewayService_BatchPushEvents_FullMethodName = "/gateway.v1.GatewayService/BatchPushEvents"
 )
 
 // GatewayServiceClient is the client API for GatewayService service.
@@ -27,12 +28,24 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
 // GatewayService 是 msggateway 的下行推送 gRPC 面（03-message-pipeline §6.2）。
-// service/push 通过 k8s headless Service DNS 拿到所有 gateway 实例，对每个实例并发
-// 调 BatchPushOneMsg（广播，不经注册中心/etcd）；每个 gateway 只投递给自己持有的
-// 本地 WebSocket 连接，并回传 per-user 投递结果。push 据此汇总判定哪些 user 真离线
+// 推送方通过 k8s headless Service DNS 拿到所有 gateway 实例，对每个实例并发调用
+// 推送 RPC（广播，不经注册中心/etcd）；每个 gateway 只投递给自己持有的本地
+// WebSocket 连接，并回传 per-user 投递结果。push 据此汇总判定哪些 user 真离线
 // → 二段式 toOfflinePush。
 type GatewayServiceClient interface {
+	// BatchPushOneMsg 推送一条事件。保留给单条/灰度路径，语义不变。
 	BatchPushOneMsg(ctx context.Context, in *BatchPushOneMsgReq, opts ...grpc.CallOption) (*BatchPushOneMsgResp, error)
+	// BatchPushEvents 一次推送一批事件（issue #704 P1 批量推送）。
+	//
+	// msg-rpc 的 pipeline worker 把同一批已提交消息聚合成**一次** RPC：RPC 次数从
+	// O(消息数) 降到 O(批次数)。gateway 收到后按「用户 → 本地连接」分组，同一用户
+	// 在一批内只做一次 presence/连接查找、同一连接只取一次写锁，再逐帧写出。
+	//
+	// 投递语义是 at-least-once：整批 RPC 失败时调用方整批重试，网关不按 message_id
+	// 去重；重复推送的帧携带相同 server_msg_id，客户端按它幂等（与现有单条推送一致）。
+	// 单条事件级的永久错误（event_json 解码失败等）只让该条 event 的 result.error
+	// 非空，不影响同批其它事件。
+	BatchPushEvents(ctx context.Context, in *BatchPushEventsReq, opts ...grpc.CallOption) (*BatchPushEventsResp, error)
 }
 
 type gatewayServiceClient struct {
@@ -53,17 +66,39 @@ func (c *gatewayServiceClient) BatchPushOneMsg(ctx context.Context, in *BatchPus
 	return out, nil
 }
 
+func (c *gatewayServiceClient) BatchPushEvents(ctx context.Context, in *BatchPushEventsReq, opts ...grpc.CallOption) (*BatchPushEventsResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BatchPushEventsResp)
+	err := c.cc.Invoke(ctx, GatewayService_BatchPushEvents_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // GatewayServiceServer is the server API for GatewayService service.
 // All implementations must embed UnimplementedGatewayServiceServer
 // for forward compatibility.
 //
 // GatewayService 是 msggateway 的下行推送 gRPC 面（03-message-pipeline §6.2）。
-// service/push 通过 k8s headless Service DNS 拿到所有 gateway 实例，对每个实例并发
-// 调 BatchPushOneMsg（广播，不经注册中心/etcd）；每个 gateway 只投递给自己持有的
-// 本地 WebSocket 连接，并回传 per-user 投递结果。push 据此汇总判定哪些 user 真离线
+// 推送方通过 k8s headless Service DNS 拿到所有 gateway 实例，对每个实例并发调用
+// 推送 RPC（广播，不经注册中心/etcd）；每个 gateway 只投递给自己持有的本地
+// WebSocket 连接，并回传 per-user 投递结果。push 据此汇总判定哪些 user 真离线
 // → 二段式 toOfflinePush。
 type GatewayServiceServer interface {
+	// BatchPushOneMsg 推送一条事件。保留给单条/灰度路径，语义不变。
 	BatchPushOneMsg(context.Context, *BatchPushOneMsgReq) (*BatchPushOneMsgResp, error)
+	// BatchPushEvents 一次推送一批事件（issue #704 P1 批量推送）。
+	//
+	// msg-rpc 的 pipeline worker 把同一批已提交消息聚合成**一次** RPC：RPC 次数从
+	// O(消息数) 降到 O(批次数)。gateway 收到后按「用户 → 本地连接」分组，同一用户
+	// 在一批内只做一次 presence/连接查找、同一连接只取一次写锁，再逐帧写出。
+	//
+	// 投递语义是 at-least-once：整批 RPC 失败时调用方整批重试，网关不按 message_id
+	// 去重；重复推送的帧携带相同 server_msg_id，客户端按它幂等（与现有单条推送一致）。
+	// 单条事件级的永久错误（event_json 解码失败等）只让该条 event 的 result.error
+	// 非空，不影响同批其它事件。
+	BatchPushEvents(context.Context, *BatchPushEventsReq) (*BatchPushEventsResp, error)
 	mustEmbedUnimplementedGatewayServiceServer()
 }
 
@@ -76,6 +111,9 @@ type UnimplementedGatewayServiceServer struct{}
 
 func (UnimplementedGatewayServiceServer) BatchPushOneMsg(context.Context, *BatchPushOneMsgReq) (*BatchPushOneMsgResp, error) {
 	return nil, status.Error(codes.Unimplemented, "method BatchPushOneMsg not implemented")
+}
+func (UnimplementedGatewayServiceServer) BatchPushEvents(context.Context, *BatchPushEventsReq) (*BatchPushEventsResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method BatchPushEvents not implemented")
 }
 func (UnimplementedGatewayServiceServer) mustEmbedUnimplementedGatewayServiceServer() {}
 func (UnimplementedGatewayServiceServer) testEmbeddedByValue()                        {}
@@ -116,6 +154,24 @@ func _GatewayService_BatchPushOneMsg_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _GatewayService_BatchPushEvents_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BatchPushEventsReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GatewayServiceServer).BatchPushEvents(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GatewayService_BatchPushEvents_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GatewayServiceServer).BatchPushEvents(ctx, req.(*BatchPushEventsReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // GatewayService_ServiceDesc is the grpc.ServiceDesc for GatewayService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -126,6 +182,10 @@ var GatewayService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "BatchPushOneMsg",
 			Handler:    _GatewayService_BatchPushOneMsg_Handler,
+		},
+		{
+			MethodName: "BatchPushEvents",
+			Handler:    _GatewayService_BatchPushEvents_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -128,6 +128,239 @@ func (x *BatchPushOneMsgResp) GetRecipients() []*RecipientDeliveryResult {
 	return nil
 }
 
+// PushEvent 是批量推送里的一条下行事件。
+type PushEvent struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// event_type 取 pkg/gateway/delivery 的事件类型（当前 message_received）。
+	// 与 event_json 内的 type 同源；event_json 缺 type 时以本字段为准。
+	EventType      string   `protobuf:"bytes,1,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"`
+	ConversationId string   `protobuf:"bytes,2,opt,name=conversation_id,json=conversationId,proto3" json:"conversation_id,omitempty"`
+	PushToUserIds  []string `protobuf:"bytes,3,rep,name=push_to_user_ids,json=pushToUserIds,proto3" json:"push_to_user_ids,omitempty"`
+	// event_json 与 BatchPushOneMsgReq.event_json 同形（delivery.Event 的 JSON 编码）。
+	// 对外 WS 负载形状不变：批量只减少 RPC 次数，不改造 payload。
+	EventJson []byte `protobuf:"bytes,4,opt,name=event_json,json=eventJson,proto3" json:"event_json,omitempty"`
+	// trace_id 供网关侧日志/链路关联；空表示沿用 event_json.data.trace_id。
+	TraceId       string `protobuf:"bytes,5,opt,name=trace_id,json=traceId,proto3" json:"trace_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PushEvent) Reset() {
+	*x = PushEvent{}
+	mi := &file_proto_gateway_v1_gateway_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PushEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PushEvent) ProtoMessage() {}
+
+func (x *PushEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_gateway_v1_gateway_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PushEvent.ProtoReflect.Descriptor instead.
+func (*PushEvent) Descriptor() ([]byte, []int) {
+	return file_proto_gateway_v1_gateway_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *PushEvent) GetEventType() string {
+	if x != nil {
+		return x.EventType
+	}
+	return ""
+}
+
+func (x *PushEvent) GetConversationId() string {
+	if x != nil {
+		return x.ConversationId
+	}
+	return ""
+}
+
+func (x *PushEvent) GetPushToUserIds() []string {
+	if x != nil {
+		return x.PushToUserIds
+	}
+	return nil
+}
+
+func (x *PushEvent) GetEventJson() []byte {
+	if x != nil {
+		return x.EventJson
+	}
+	return nil
+}
+
+func (x *PushEvent) GetTraceId() string {
+	if x != nil {
+		return x.TraceId
+	}
+	return ""
+}
+
+type BatchPushEventsReq struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 一批事件。调用方按 ≤16 条聚合（pipeline 的 deliveryBatchSize）。
+	Events        []*PushEvent `protobuf:"bytes,1,rep,name=events,proto3" json:"events,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BatchPushEventsReq) Reset() {
+	*x = BatchPushEventsReq{}
+	mi := &file_proto_gateway_v1_gateway_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BatchPushEventsReq) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BatchPushEventsReq) ProtoMessage() {}
+
+func (x *BatchPushEventsReq) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_gateway_v1_gateway_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BatchPushEventsReq.ProtoReflect.Descriptor instead.
+func (*BatchPushEventsReq) Descriptor() ([]byte, []int) {
+	return file_proto_gateway_v1_gateway_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *BatchPushEventsReq) GetEvents() []*PushEvent {
+	if x != nil {
+		return x.Events
+	}
+	return nil
+}
+
+type PushEventResult struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// index 是请求 events 的下标，调用方按它对账，不依赖返回顺序。
+	Index      int32                      `protobuf:"varint,1,opt,name=index,proto3" json:"index,omitempty"`
+	Recipients []*RecipientDeliveryResult `protobuf:"bytes,2,rep,name=recipients,proto3" json:"recipients,omitempty"`
+	// error 非空表示该条事件整体失败（解码失败等）；同批其它事件照常投递。
+	Error         string `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PushEventResult) Reset() {
+	*x = PushEventResult{}
+	mi := &file_proto_gateway_v1_gateway_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PushEventResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PushEventResult) ProtoMessage() {}
+
+func (x *PushEventResult) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_gateway_v1_gateway_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PushEventResult.ProtoReflect.Descriptor instead.
+func (*PushEventResult) Descriptor() ([]byte, []int) {
+	return file_proto_gateway_v1_gateway_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *PushEventResult) GetIndex() int32 {
+	if x != nil {
+		return x.Index
+	}
+	return 0
+}
+
+func (x *PushEventResult) GetRecipients() []*RecipientDeliveryResult {
+	if x != nil {
+		return x.Recipients
+	}
+	return nil
+}
+
+func (x *PushEventResult) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+type BatchPushEventsResp struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Results       []*PushEventResult     `protobuf:"bytes,1,rep,name=results,proto3" json:"results,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BatchPushEventsResp) Reset() {
+	*x = BatchPushEventsResp{}
+	mi := &file_proto_gateway_v1_gateway_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BatchPushEventsResp) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BatchPushEventsResp) ProtoMessage() {}
+
+func (x *BatchPushEventsResp) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_gateway_v1_gateway_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BatchPushEventsResp.ProtoReflect.Descriptor instead.
+func (*BatchPushEventsResp) Descriptor() ([]byte, []int) {
+	return file_proto_gateway_v1_gateway_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *BatchPushEventsResp) GetResults() []*PushEventResult {
+	if x != nil {
+		return x.Results
+	}
+	return nil
+}
+
 type RecipientDeliveryResult struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	UserId string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
@@ -140,7 +373,7 @@ type RecipientDeliveryResult struct {
 
 func (x *RecipientDeliveryResult) Reset() {
 	*x = RecipientDeliveryResult{}
-	mi := &file_proto_gateway_v1_gateway_proto_msgTypes[2]
+	mi := &file_proto_gateway_v1_gateway_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -152,7 +385,7 @@ func (x *RecipientDeliveryResult) String() string {
 func (*RecipientDeliveryResult) ProtoMessage() {}
 
 func (x *RecipientDeliveryResult) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_gateway_v1_gateway_proto_msgTypes[2]
+	mi := &file_proto_gateway_v1_gateway_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -165,7 +398,7 @@ func (x *RecipientDeliveryResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecipientDeliveryResult.ProtoReflect.Descriptor instead.
 func (*RecipientDeliveryResult) Descriptor() ([]byte, []int) {
-	return file_proto_gateway_v1_gateway_proto_rawDescGZIP(), []int{2}
+	return file_proto_gateway_v1_gateway_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *RecipientDeliveryResult) GetUserId() string {
@@ -203,13 +436,32 @@ const file_proto_gateway_v1_gateway_proto_rawDesc = "" +
 	"\x13BatchPushOneMsgResp\x12C\n" +
 	"\n" +
 	"recipients\x18\x01 \x03(\v2#.gateway.v1.RecipientDeliveryResultR\n" +
-	"recipients\"`\n" +
+	"recipients\"\xb6\x01\n" +
+	"\tPushEvent\x12\x1d\n" +
+	"\n" +
+	"event_type\x18\x01 \x01(\tR\teventType\x12'\n" +
+	"\x0fconversation_id\x18\x02 \x01(\tR\x0econversationId\x12'\n" +
+	"\x10push_to_user_ids\x18\x03 \x03(\tR\rpushToUserIds\x12\x1d\n" +
+	"\n" +
+	"event_json\x18\x04 \x01(\fR\teventJson\x12\x19\n" +
+	"\btrace_id\x18\x05 \x01(\tR\atraceId\"C\n" +
+	"\x12BatchPushEventsReq\x12-\n" +
+	"\x06events\x18\x01 \x03(\v2\x15.gateway.v1.PushEventR\x06events\"\x82\x01\n" +
+	"\x0fPushEventResult\x12\x14\n" +
+	"\x05index\x18\x01 \x01(\x05R\x05index\x12C\n" +
+	"\n" +
+	"recipients\x18\x02 \x03(\v2#.gateway.v1.RecipientDeliveryResultR\n" +
+	"recipients\x12\x14\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\"L\n" +
+	"\x13BatchPushEventsResp\x125\n" +
+	"\aresults\x18\x01 \x03(\v2\x1b.gateway.v1.PushEventResultR\aresults\"`\n" +
 	"\x17RecipientDeliveryResult\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\x14\n" +
-	"\x05error\x18\x03 \x01(\tR\x05error2d\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error2\xb8\x01\n" +
 	"\x0eGatewayService\x12R\n" +
-	"\x0fBatchPushOneMsg\x12\x1e.gateway.v1.BatchPushOneMsgReq\x1a\x1f.gateway.v1.BatchPushOneMsgRespB=Z;github.com/wujunhui99/agents_im_protocol/gateway/v1;gatewayb\x06proto3"
+	"\x0fBatchPushOneMsg\x12\x1e.gateway.v1.BatchPushOneMsgReq\x1a\x1f.gateway.v1.BatchPushOneMsgResp\x12R\n" +
+	"\x0fBatchPushEvents\x12\x1e.gateway.v1.BatchPushEventsReq\x1a\x1f.gateway.v1.BatchPushEventsRespB=Z;github.com/wujunhui99/agents_im_protocol/gateway/v1;gatewayb\x06proto3"
 
 var (
 	file_proto_gateway_v1_gateway_proto_rawDescOnce sync.Once
@@ -223,21 +475,30 @@ func file_proto_gateway_v1_gateway_proto_rawDescGZIP() []byte {
 	return file_proto_gateway_v1_gateway_proto_rawDescData
 }
 
-var file_proto_gateway_v1_gateway_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_proto_gateway_v1_gateway_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_proto_gateway_v1_gateway_proto_goTypes = []any{
 	(*BatchPushOneMsgReq)(nil),      // 0: gateway.v1.BatchPushOneMsgReq
 	(*BatchPushOneMsgResp)(nil),     // 1: gateway.v1.BatchPushOneMsgResp
-	(*RecipientDeliveryResult)(nil), // 2: gateway.v1.RecipientDeliveryResult
+	(*PushEvent)(nil),               // 2: gateway.v1.PushEvent
+	(*BatchPushEventsReq)(nil),      // 3: gateway.v1.BatchPushEventsReq
+	(*PushEventResult)(nil),         // 4: gateway.v1.PushEventResult
+	(*BatchPushEventsResp)(nil),     // 5: gateway.v1.BatchPushEventsResp
+	(*RecipientDeliveryResult)(nil), // 6: gateway.v1.RecipientDeliveryResult
 }
 var file_proto_gateway_v1_gateway_proto_depIdxs = []int32{
-	2, // 0: gateway.v1.BatchPushOneMsgResp.recipients:type_name -> gateway.v1.RecipientDeliveryResult
-	0, // 1: gateway.v1.GatewayService.BatchPushOneMsg:input_type -> gateway.v1.BatchPushOneMsgReq
-	1, // 2: gateway.v1.GatewayService.BatchPushOneMsg:output_type -> gateway.v1.BatchPushOneMsgResp
-	2, // [2:3] is the sub-list for method output_type
-	1, // [1:2] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	6, // 0: gateway.v1.BatchPushOneMsgResp.recipients:type_name -> gateway.v1.RecipientDeliveryResult
+	2, // 1: gateway.v1.BatchPushEventsReq.events:type_name -> gateway.v1.PushEvent
+	6, // 2: gateway.v1.PushEventResult.recipients:type_name -> gateway.v1.RecipientDeliveryResult
+	4, // 3: gateway.v1.BatchPushEventsResp.results:type_name -> gateway.v1.PushEventResult
+	0, // 4: gateway.v1.GatewayService.BatchPushOneMsg:input_type -> gateway.v1.BatchPushOneMsgReq
+	3, // 5: gateway.v1.GatewayService.BatchPushEvents:input_type -> gateway.v1.BatchPushEventsReq
+	1, // 6: gateway.v1.GatewayService.BatchPushOneMsg:output_type -> gateway.v1.BatchPushOneMsgResp
+	5, // 7: gateway.v1.GatewayService.BatchPushEvents:output_type -> gateway.v1.BatchPushEventsResp
+	6, // [6:8] is the sub-list for method output_type
+	4, // [4:6] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_proto_gateway_v1_gateway_proto_init() }
@@ -251,7 +512,7 @@ func file_proto_gateway_v1_gateway_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_gateway_v1_gateway_proto_rawDesc), len(file_proto_gateway_v1_gateway_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

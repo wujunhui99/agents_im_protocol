@@ -5,12 +5,25 @@ package gateway.v1;
 option go_package = "github.com/wujunhui99/agents_im_protocol/gateway/v1;gateway";
 
 // GatewayService 是 msggateway 的下行推送 gRPC 面（03-message-pipeline §6.2）。
-// service/push 通过 k8s headless Service DNS 拿到所有 gateway 实例，对每个实例并发
-// 调 BatchPushOneMsg（广播，不经注册中心/etcd）；每个 gateway 只投递给自己持有的
-// 本地 WebSocket 连接，并回传 per-user 投递结果。push 据此汇总判定哪些 user 真离线
+// 推送方通过 k8s headless Service DNS 拿到所有 gateway 实例，对每个实例并发调用
+// 推送 RPC（广播，不经注册中心/etcd）；每个 gateway 只投递给自己持有的本地
+// WebSocket 连接，并回传 per-user 投递结果。push 据此汇总判定哪些 user 真离线
 // → 二段式 toOfflinePush。
 service GatewayService {
+  // BatchPushOneMsg 推送一条事件。保留给单条/灰度路径，语义不变。
   rpc BatchPushOneMsg(BatchPushOneMsgReq) returns (BatchPushOneMsgResp);
+
+  // BatchPushEvents 一次推送一批事件（issue #704 P1 批量推送）。
+  //
+  // msg-rpc 的 pipeline worker 把同一批已提交消息聚合成**一次** RPC：RPC 次数从
+  // O(消息数) 降到 O(批次数)。gateway 收到后按「用户 → 本地连接」分组，同一用户
+  // 在一批内只做一次 presence/连接查找、同一连接只取一次写锁，再逐帧写出。
+  //
+  // 投递语义是 at-least-once：整批 RPC 失败时调用方整批重试，网关不按 message_id
+  // 去重；重复推送的帧携带相同 server_msg_id，客户端按它幂等（与现有单条推送一致）。
+  // 单条事件级的永久错误（event_json 解码失败等）只让该条 event 的 result.error
+  // 非空，不影响同批其它事件。
+  rpc BatchPushEvents(BatchPushEventsReq) returns (BatchPushEventsResp);
 }
 
 message BatchPushOneMsgReq {
@@ -24,6 +37,37 @@ message BatchPushOneMsgReq {
 
 message BatchPushOneMsgResp {
   repeated RecipientDeliveryResult recipients = 1;
+}
+
+// PushEvent 是批量推送里的一条下行事件。
+message PushEvent {
+  // event_type 取 pkg/gateway/delivery 的事件类型（当前 message_received）。
+  // 与 event_json 内的 type 同源；event_json 缺 type 时以本字段为准。
+  string event_type = 1;
+  string conversation_id = 2;
+  repeated string push_to_user_ids = 3;
+  // event_json 与 BatchPushOneMsgReq.event_json 同形（delivery.Event 的 JSON 编码）。
+  // 对外 WS 负载形状不变：批量只减少 RPC 次数，不改造 payload。
+  bytes event_json = 4;
+  // trace_id 供网关侧日志/链路关联；空表示沿用 event_json.data.trace_id。
+  string trace_id = 5;
+}
+
+message BatchPushEventsReq {
+  // 一批事件。调用方按 ≤16 条聚合（pipeline 的 deliveryBatchSize）。
+  repeated PushEvent events = 1;
+}
+
+message PushEventResult {
+  // index 是请求 events 的下标，调用方按它对账，不依赖返回顺序。
+  int32 index = 1;
+  repeated RecipientDeliveryResult recipients = 2;
+  // error 非空表示该条事件整体失败（解码失败等）；同批其它事件照常投递。
+  string error = 3;
+}
+
+message BatchPushEventsResp {
+  repeated PushEventResult results = 1;
 }
 
 message RecipientDeliveryResult {
