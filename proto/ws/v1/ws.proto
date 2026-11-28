@@ -1,0 +1,208 @@
+syntax = "proto3";
+
+package ws.v1;
+
+option go_package = "github.com/wujunhui99/agents_im_protocol/ws/v1;ws";
+
+// WebSocket 二进制线路（issue #704：protobuf frames + coalesced delivery）。
+//
+// 线格式：
+//
+//	一条 WebSocket binary message = uint32 大端长度 N + N 字节 protobuf
+//
+// 长度前缀让客户端/代理不必依赖 WS 分帧即可切帧，并能在解析前拒绝超长帧
+// （服务端上限 1 MiB）。上下行都使用同一封装；一个 ServerFrame 的 repeated
+// events 承载同一 10–20ms flush 窗口内的多条事件，顺序即产生顺序。
+//
+// 命令字段与改造前的 JSON 命令一一对应（JSON 名见各 message 的行内注释）。
+// 客户端命令用 oneof 表示，未识别的扩展命令走 RawCommand；服务端下行用
+// ServerEvent oneof 表示，未建模的 delivery 事件类型走 RawEvent，因此二进制
+// 连接与 JSON 连接看到的事件语义一致。
+//
+// 过渡期兼容：服务端同时接受 JSON 文本帧（旧客户端/回滚），按子协议
+// `agents-im.ws.v1` 或首个二进制帧判定；计划在下一个 minor 版本移除 JSON。
+
+message ClientFrame {
+  // 与 JSON 命令的 request_id 等价；服务端原样回填到 CommandAck/HeartbeatAck。
+  string request_id = 1;
+  // 可选；非空时覆盖连接级 trace_id，并写入服务端 span。
+  string trace_id = 2;
+
+  oneof command {
+    Heartbeat heartbeat = 3;
+    SendMessageCommand send_message = 4;
+    PullMessagesCommand pull_messages = 5;
+    GetConversationSeqsCommand get_conversation_seqs = 6;
+    MarkConversationReadCommand mark_conversation_read = 7;
+    // 前向兼容：本次未建模的命令（服务端按 unsupported command 返回错误），
+    // 避免为新增命令升级协议版本才能发送。
+    RawCommand raw = 15;
+  }
+}
+
+// heartbeat 无参数；payload 在 JSON 里是 {}。
+message Heartbeat {}
+
+message SendMessageCommand {
+  string chat_type = 1;     // chatType
+  string receiver_id = 2;   // receiverId
+  string group_id = 3;      // groupId
+  string client_msg_id = 4; // clientMsgId
+  string content_type = 5;  // contentType
+  string content = 6;       // content
+}
+
+message PullMessagesCommand {
+  string conversation_id = 1; // conversationId
+  int64 from_seq = 2;         // fromSeq
+  int64 to_seq = 3;           // toSeq
+  int32 limit = 4;            // limit
+  string order = 5;           // order
+}
+
+message GetConversationSeqsCommand {
+  repeated string conversation_ids = 1; // conversationIds
+}
+
+message MarkConversationReadCommand {
+  string conversation_id = 1; // conversationId
+  int64 has_read_seq = 2;     // hasReadSeq
+}
+
+message RawCommand {
+  string command = 1;
+  // 原始 JSON payload（等同于旧命令信封的 payload 字段）。
+  string payload_json = 2;
+}
+
+// ServerFrame 是服务端一次 flush 写出的完整逻辑帧。一条 WebSocket binary
+// message 只含一个 ServerFrame；events 为空时服务端不会发帧。
+message ServerFrame {
+  // 同一窗口内产生的事件，按产生顺序排列。心跳 ACK / 协议错误插在普通事件
+  // 之前（它们是对客户端请求的响应，不参与消息顺序）。
+  repeated ServerEvent events = 1;
+}
+
+message ServerEvent {
+  oneof event {
+    // delivery.EventMessageReceived 的 data（原本 JSON 的 {"type":..,"data":..}）。
+    Message message_received = 1;
+    // delivery.EventMessageDelivered 的 data。
+    Message message_delivered = 2;
+    HeartbeatAck heartbeat_ack = 3;
+    CommandAck command_ack = 4;
+    ErrorEvent error = 5;
+    // 前向兼容：未建模的 delivery 事件类型（例如未来的会话级通知）。
+    RawEvent raw = 6;
+  }
+}
+
+// Message 与 pkg/gateway/delivery.Message 的 JSON 字段一一对应。
+message Message {
+  string server_msg_id = 1;
+  string client_msg_id = 2;
+  string conversation_id = 3;
+  int64 seq = 4;
+  string sender_id = 5;
+  string receiver_id = 6;
+  string group_id = 7;
+  string chat_type = 8;
+  string content_type = 9;
+  string content = 10;
+  // 对应 JSON 的 content_metadata 对象；以 JSON 字符串承载，避免把任意
+  // 第三方元数据强类型化（语义与 JSON 路径完全一致，解码方 JSON.parse）。
+  string content_metadata_json = 11;
+  string message_origin = 12;
+  string agent_account_id = 13;
+  string trigger_server_msg_id = 14;
+  string agent_run_id = 15;
+  bool allow_recursive_trigger = 16;
+  int64 send_time = 17;
+  int64 created_at = 18;
+  string trace_id = 19;
+  string request_id = 20;
+  string traceparent = 21;
+  string tracestate = 22;
+}
+
+message HeartbeatAck {
+  string request_id = 1;
+  string trace_id = 2;
+  string connection_id = 3;
+  string user_id = 4;
+  string instance_id = 5;
+  int64 server_time = 6;
+}
+
+message CommandAck {
+  string request_id = 1;
+  string trace_id = 2;
+  // 原命令名（send_message / pull_messages / ...），与 JSON 响应的 type 等价。
+  string command = 3;
+  // "ok" | "error"，与 JSON 响应的 status 等价。
+  string status = 4;
+  CommandError error = 5;
+
+  oneof result {
+    SendMessageAck send_message = 6;
+    PullMessagesAck pull_messages = 7;
+    GetConversationSeqsAck get_conversation_seqs = 8;
+    MarkConversationReadAck mark_conversation_read = 9;
+  }
+
+  // 前向兼容：未建模命令成功结果的原 JSON 编码（camelCase，与旧响应 data
+  // 等价）。已知命令始终使用上面的 oneof result。
+  string data_json = 10;
+}
+
+message CommandError {
+  string code = 1;
+  string message = 2;
+}
+
+message SendMessageAck {
+  Message message = 1;
+  bool deduplicated = 2;
+}
+
+message PullMessagesAck {
+  repeated Message messages = 1;
+  bool is_end = 2;
+  int64 next_seq = 3;
+}
+
+message ConversationSeqState {
+  string conversation_id = 1;
+  int64 max_seq = 2;
+  int64 has_read_seq = 3;
+  int64 unread_count = 4;
+  int64 max_seq_time = 5;
+  Message last_message = 6;
+}
+
+message GetConversationSeqsAck {
+  repeated ConversationSeqState states = 1;
+}
+
+message MarkConversationReadAck {
+  string conversation_id = 1;
+  int64 has_read_seq = 2;
+  int64 max_seq = 3;
+  int64 unread_count = 4;
+  bool updated = 5;
+}
+
+// ErrorEvent 是协议/连接级错误（帧无法解码、超长、未识别命令等），没有对应
+// 的命令结果。命令业务错误仍用 CommandAck{status:"error"}，与 JSON 路径一致。
+message ErrorEvent {
+  string request_id = 1;
+  string trace_id = 2;
+  string code = 3;
+  string message = 4;
+}
+
+message RawEvent {
+  string type = 1;
+  // delivery.Event.Data 的 JSON 编码。
+  string data_json = 2;
+}

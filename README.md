@@ -31,9 +31,28 @@ go.mod                        # module github.com/wujunhui99/agents_im_protocol
 | media | `media.v1` | resource-rpc（media 能力） |
 | mail | `mail.v1` | resource-rpc（mail 能力） |
 | gateway | `gateway.v1` | msggateway（下行推送 gRPC 面） |
+| ws | `ws.v1` | msggateway / web（二进制 WebSocket 面） |
 
 注意：`media` / `mail` 是 resource-rpc 一个进程里的两个 gRPC service，契约上仍保持
 两个独立包，避免把"外部资源管理"耦合成一个大 proto。
+
+## WebSocket 二进制面（`ws.v1`）
+
+`proto/ws/v1/ws.proto` 定义 WebSocket 的 protobuf 帧。线格式：
+
+```
+一条 WebSocket binary message = uint32 大端长度 N + N 字节 ws.v1.ClientFrame / ServerFrame
+```
+
+- `ClientFrame` 的 `oneof command` 覆盖 heartbeat / send_message / pull_messages /
+  get_conversation_seqs / mark_conversation_read；未知扩展命令走 `RawCommand`。
+- `ServerFrame.events` 是 `repeated ServerEvent`：同一 flush 窗口的多条事件合并成
+  一帧，顺序即服务端产生顺序；心跳 ACK / 错误在事件数组中优先。
+- 客户端通过子协议 `agents-im.ws.v1` 协商；未协商的连接继续使用旧的 JSON 文本帧
+  （过渡期兼容，计划在下一个 minor 移除）。
+- 消费方生成：Go 侧 `make gen`；TypeScript 侧由实现仓库的
+  `npm --prefix web run gen:ws` 从本模块的 `proto/ws/v1/ws.proto` 生成
+  protobufjs 静态模块（生成产物提交，构建离线）。
 
 ## 变更流程
 

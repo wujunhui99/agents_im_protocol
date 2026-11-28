@@ -9,6 +9,7 @@ const PROTOS: &[&str] = &[
     "../proto/media/v1/media.proto",
     "../proto/msg/v1/msg.proto",
     "../proto/user/v1/user.proto",
+    "../proto/ws/v1/ws.proto",
 ];
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
